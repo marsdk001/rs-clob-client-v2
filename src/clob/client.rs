@@ -414,13 +414,21 @@ pub struct Config {
     /// headers. This adds another round trip to the requests.
     #[builder(default)]
     use_server_time: bool,
+
     /// Override for the geoblock API host. Defaults to `https://polymarket.com`.
     /// This is primarily useful for testing.
     #[builder(into)]
     geoblock_host: Option<String>,
+
     /// Default builder code inherited by orders built via [`Client::limit_order`] or
     /// [`Client::market_order`] when not set on the order itself.
     builder_code: Option<B256>,
+
+    /// Optional custom `reqwest::Client`. If provided, it will be used instead of the internal builder.
+    /// This allows full control over timeouts, connection pooling, TCP_NODELAY, etc.
+    #[builder(default)]
+    pub http_client: Option<reqwest::Client>,
+
     #[cfg(feature = "heartbeats")]
     #[builder(default = Duration::from_secs(5))]
     /// How often the [`Client`] will automatically submit heartbeats. The default is five (5) seconds.
@@ -1465,13 +1473,25 @@ impl Client<Unauthenticated> {
     /// ```
     pub fn new(host: &str, config: Config) -> Result<Client<Unauthenticated>> {
         let mut headers = HeaderMap::new();
-
         headers.insert("User-Agent", HeaderValue::from_static("rs_clob_client"));
         headers.insert("Accept", HeaderValue::from_static("*/*"));
         headers.insert("Connection", HeaderValue::from_static("keep-alive"));
         headers.insert("Content-Type", HeaderValue::from_static("application/json"));
 
-        let client = ReqwestClient::builder().default_headers(headers).build()?;
+        // Use custom http_client if provided, otherwise build with good low-latency defaults
+        let http_client = match config.http_client.clone() {
+            Some(c) => c,
+            None => {
+                ReqwestClient::builder()
+                    .default_headers(headers)
+                    .timeout(std::time::Duration::from_millis(2000))
+                    .connect_timeout(std::time::Duration::from_millis(800))
+                    .tcp_nodelay(true)
+                    .pool_idle_timeout(std::time::Duration::from_secs(90))
+                    .http2_keep_alive_interval(Some(std::time::Duration::from_secs(10)))
+                    .build()?
+            }
+        };
 
         let geoblock_host = Url::parse(
             config
@@ -1485,7 +1505,7 @@ impl Client<Unauthenticated> {
                 config,
                 host: Url::parse(host)?,
                 geoblock_host,
-                client,
+                client: http_client,
                 tick_sizes: DashMap::new(),
                 neg_risk: DashMap::new(),
                 fee_rate_bps: DashMap::new(),
