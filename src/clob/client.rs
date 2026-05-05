@@ -426,7 +426,6 @@ pub struct Config {
 
     /// Optional custom `reqwest::Client`. If provided, it will be used instead of the internal builder.
     /// This allows full control over timeouts, connection pooling, TCP_NODELAY, etc.
-    #[builder(default)]
     pub http_client: Option<reqwest::Client>,
 
     #[cfg(feature = "heartbeats")]
@@ -1478,8 +1477,8 @@ impl Client<Unauthenticated> {
         headers.insert("Connection", HeaderValue::from_static("keep-alive"));
         headers.insert("Content-Type", HeaderValue::from_static("application/json"));
 
-        // Use custom http_client if provided, otherwise build with good low-latency defaults
-        let http_client = match config.http_client.clone() {
+        // === CUSTOM HTTP CLIENT SUPPORT ===
+        let http_client = match config.http_client {
             Some(c) => c,
             None => {
                 ReqwestClient::builder()
@@ -1505,7 +1504,7 @@ impl Client<Unauthenticated> {
                 config,
                 host: Url::parse(host)?,
                 geoblock_host,
-                client: http_client,
+                client: http_client,           // ← use our client
                 tick_sizes: DashMap::new(),
                 neg_risk: DashMap::new(),
                 fee_rate_bps: DashMap::new(),
