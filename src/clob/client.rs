@@ -1471,7 +1471,7 @@ impl Client<Unauthenticated> {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn new(host: &str, config: Config) -> Result<Client<Unauthenticated>> {
+    pub fn new(host: &str, mut config: Config) -> Result<Client<Unauthenticated>> {
         let mut headers = HeaderMap::new();
         headers.insert("User-Agent", HeaderValue::from_static("rs_clob_client"));
         headers.insert("Accept", HeaderValue::from_static("*/*"));
@@ -1479,7 +1479,7 @@ impl Client<Unauthenticated> {
         headers.insert("Content-Type", HeaderValue::from_static("application/json"));
 
         // === CUSTOM HTTP CLIENT SUPPORT ===
-        let http_client = match config.http_client {
+        let http_client = match config.http_client.take() {   // ← .take() instead of moving
             Some(c) => c,
             None => {
                 ReqwestClient::builder()
@@ -1502,10 +1502,10 @@ impl Client<Unauthenticated> {
 
         Ok(Self {
             inner: Arc::new(ClientInner {
-                config,
+                config,                           // ← now works because we used .take()
                 host: Url::parse(host)?,
                 geoblock_host,
-                client: http_client,           // ← use our client
+                client: http_client,
                 tick_sizes: DashMap::new(),
                 neg_risk: DashMap::new(),
                 fee_rate_bps: DashMap::new(),
@@ -1522,7 +1522,7 @@ impl Client<Unauthenticated> {
             heartbeat_token: DroppingCancellationToken(None),
         })
     }
-
+    
     /// Creates an authentication builder to upgrade this client to authenticated mode.
     ///
     /// Returns an [`AuthenticationBuilder`] that can be configured with credentials
